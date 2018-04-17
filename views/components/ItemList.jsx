@@ -2,10 +2,11 @@
 
 import React from 'react';
 import { connect } from 'react-redux';
-import { addItem, updateItem, deleteItem, resetAll } from '../actions.js';
+import { addItem, updateItem, deleteItem, reorderItem, resetAll } from '../actions.js';
 import { getAllItems, getPendingItems, getCompletedItems, getPausedItems } from '../reducers/item-list.js';
 import Item from './Item';
 import Progress from './Progress';
+import { Droppable, Draggable, DragDropContext } from 'react-beautiful-dnd';
 
 class ItemList extends React.Component {
   constructor(props) {
@@ -13,6 +14,7 @@ class ItemList extends React.Component {
     this.addItem = this.addItem.bind(this);
     this.completeItem = this.completeItem.bind(this);
     this.pauseItem = this.pauseItem.bind(this);
+    this.onDragEnd = this.onDragEnd.bind(this);
   }
 
   addItem(e) {
@@ -76,15 +78,17 @@ class ItemList extends React.Component {
     }
   }
 
-  renderPaused() {
-    const pausedItems = this.props.pausedItems;
-    if (pausedItems !== undefined && pausedItems.length > 0) {
-      return (
-        <div>
-          <h2>Do Later</h2>
-          {
-            pausedItems && pausedItems.map((item) => {
-              return (
+  renderItems(items) {
+    return (items || []).map((item, index) => (
+      <Draggable key={item.key} draggableId={String(item.key)} index={index}>
+        {(draggableProvided) => {
+          return (
+            <div>
+              <div
+                ref={draggableProvided.innerRef}
+                {...draggableProvided.draggableProps}
+              >
+              <div style={{ height: '100%' }}>
                 <Item
                   item={item}
                   text={item.text}
@@ -92,47 +96,60 @@ class ItemList extends React.Component {
                   key={item.key}
                   onComplete={this.completeItem}
                   onDelete={this.props.deleteItem}
-                  paused={true}
+                  paused={item.status === 'paused'}
+                  dragHandleProps={draggableProvided.dragHandleProps}
                 />
-              );
-            })
-          }
-        </div>
-      );
-    }
+                </div>
+              </div>
+              {draggableProvided.placeholder}
+            </div>
+          );
+        }}
+      </Draggable>
+    ))
+  }
+
+  onDragEnd({ source, destination }) {
+    if (!destination) return;
+    this.props.reorderItem(source, destination);
   }
 
   render() {
-    const { pendingItems } = this.props;
+    const { pendingItems, pausedItems } = this.props;
     return (
-      <div className="item-list">
-        {this.renderProgress()}
-        <form className="form" onSubmit={this.addItem}>
-          <input
-            ref={(a) => this._inputElement = a}
-            placeholder="Add new item"
-            autoFocus
-          />
-          <button type="submit" />
-        </form>
-        {
-          pendingItems && pendingItems.map(item => {
-            return (
-              <Item
-                item={item}
-                text={item.text}
-                status={item.status}
-                key={item.key}
-                onComplete={this.completeItem}
-                onDelete={this.props.deleteItem}
-                onPause={this.pauseItem}
-              />
-            );
-          })
-        }
-        {this.renderPaused()}
-        {this.renderReset()}
-    </div>
+      <DragDropContext onDragEnd={this.onDragEnd}>
+        <div className="item-list">
+          {this.renderProgress()}
+          <form className="form" onSubmit={this.addItem}>
+            <input
+              ref={(a) => this._inputElement = a}
+              placeholder="Add new item"
+              autoFocus
+            />
+            <button type="submit" />
+          </form>
+          <Droppable droppableId="pending">
+            {(droppableProvided) => (
+              <div ref={droppableProvided.innerRef} >
+                {this.renderItems(pendingItems)}
+                {droppableProvided.placeholder}
+                <div style={{ height: 20 }} />
+              </div>
+            )}
+          </Droppable>
+          <h2 style={{ margin: 0 }}>Do Later</h2>
+          <Droppable droppableId="paused">
+            {(droppableProvided) => (
+              <div ref={droppableProvided.innerRef} >
+                <div style={{ height: 20 }} />
+                {this.renderItems(pausedItems)}
+                {droppableProvided.placeholder}
+              </div>
+            )}
+          </Droppable>
+          {this.renderReset()}
+        </div>
+      </DragDropContext>
     );
   }
 }
@@ -148,7 +165,8 @@ const mapDispatchToProps = dispatch => ({
   addItem: item => dispatch(addItem(item)),
   updateItem: item => dispatch(updateItem(item)),
   deleteItem: item => dispatch(deleteItem(item)),
-  resetAll: item => dispatch(resetAll(item))
+  reorderItem: (source, destination) => dispatch(reorderItem(source, destination)),
+  resetAll: item => dispatch(resetAll(item)),
 });
 
 export default connect(mapStateToProps, mapDispatchToProps)(ItemList);
